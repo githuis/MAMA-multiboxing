@@ -733,7 +733,42 @@ local function lootAlert(self, msg)
   PlaySound(SOUNDKIT.RAID_WARNING)
 end
 
+-- The client's master looter menu (Master Looter / Assign Loot / Request Roll, GroupLootFrame.lua) opens on
+-- OPEN_MASTER_LOOT_LIST, also when autoloot "clicks" the items, and stays up after the items were given and the loot
+-- window closed. The menu open right after that event is that one (with autoloot it isn't anchored to a loot slot):
+-- remembered, and closed with the loot window if it's still the open menu (no other menu is touched).
+local lootMenu
+
+local function menuManager()
+  local menu = _G.Menu -- the client's menu system
+  return menu and menu.GetManager and menu.GetManager()
+end
+
+local function closeLootMenu(self)
+  local menu = lootMenu
+  lootMenu = nil
+  if not menu then return end
+  local ok, err = pcall(function()
+    local manager = menuManager()
+    if manager and manager:GetOpenMenu() == menu then
+      self:Debug("loot: closing the client's master looter menu")
+      menu:Close()
+    end
+  end)
+  if not ok then self:Debug("loot: closing the master looter menu failed: %s", tostring(err)) end
+end
+
+MF:On("OPEN_MASTER_LOOT_LIST", function(self)
+  C_Timer.After(0, function()
+    local manager = menuManager()
+    lootMenu = manager and manager:GetOpenMenu() or lootMenu
+    self:Debug("loot: master looter menu %s", lootMenu and "open" or "not found")
+    if not lootOpen then closeLootMenu(self) end -- opened after the loot window closed
+  end)
+end)
+
 MF:On("LOOT_CLOSED", function(self)
+  closeLootMenu(self)
   lootOpen = false
   wipe(queue)
   wipe(picks)
